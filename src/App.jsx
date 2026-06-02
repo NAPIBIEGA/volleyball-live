@@ -500,67 +500,193 @@ function NextPhaseBuilder({prevPhases, tournamentTeamMap, onBuild, defaultFmt}) 
 function CrossoverBuilder({prevPhases, tournamentTeamMap, onBuild, defaultFmt}) {
   const [name,setName]=useState("Mecze o miejsca");
   const [fmt,setFmt]=useState(defaultFmt||"bo3");
-  const [matches,setMatches]=useState([{id:uid(),home:null,away:null}]);
+  const [matches,setMatches]=useState([{id:uid(),home:null,away:null,homeLabel:"",awayLabel:"",placesFor:null}]);
+  const [autoStep,setAutoStep]=useState("config");
+  const [startPlace,setStartPlace]=useState(1);
 
+  const lastGroupPhase=[...prevPhases].reverse().find(p=>p.type==="group");
   const allStandings=[];
   prevPhases.forEach((phase,pi)=>{
+    if(phase.type!=="group") return;
     phase.groups.forEach((g)=>{
-      const rounds=phase.groupData[g.id]?.rounds||[];
-      const st=calcStandings(g.teamIds,rounds);
+      const st=calcStandings(g.teamIds,phase.groupData[g.id]?.rounds||[]);
       st.forEach((row,rank)=>{
-        allStandings.push({teamId:row.id,label:`${rank+1}. ${g.name} (Faza ${pi+1})`,pts:row.pts});
+        allStandings.push({teamId:row.id,label:`${rank+1}. ${g.name} (F${pi+1})`,rank,groupName:g.name,phaseIdx:pi});
       });
     });
   });
 
-  const usedTeams=new Set(matches.flatMap(m=>[m.home,m.away].filter(Boolean)));
-
-  function setSlot(matchId,side,teamId){
-    setMatches(ms=>ms.map(m=>m.id===matchId?{...m,[side]:teamId}:m));
+  function autoSuggest(){
+    if(!lastGroupPhase||lastGroupPhase.groups.length<2) return;
+    const groups=lastGroupPhase.groups;
+    const standings=groups.map(g=>({g,st:calcStandings(g.teamIds,lastGroupPhase.groupData[g.id]?.rounds||[])}));
+    const n=groups.length;
+    const paired=new Set();
+    const suggested=[];
+    let placeCounter=startPlace;
+    const maxRank=Math.max(...standings.map(s=>s.st.length));
+    for(let rank=0;rank<maxRank;rank++){
+      for(let i=0;i<n;i++){
+        const j=(i+Math.floor(n/2))%n;
+        const key=[Math.min(i*100+rank,j*100+rank),Math.max(i*100+rank,j*100+rank)].join("-");
+        if(paired.has(key)) continue;
+        paired.add(key);
+        const h=standings[i]?.st[rank];
+        const a=standings[j]?.st[rank];
+        if(h&&a&&h.id!==a.id){
+          suggested.push({id:uid(),home:h.id,away:a.id,homeLabel:`${rank+1}. ${groups[i].name}`,awayLabel:`${rank+1}. ${groups[j].name}`,placesFor:placeCounter});
+          placeCounter+=2;
+        }
+      }
+    }
+    setMatches(suggested.length>0?suggested:[{id:uid(),home:null,away:null,homeLabel:"",awayLabel:"",placesFor:null}]);
+    setAutoStep("preview");
   }
 
-  function addMatch(){ setMatches(ms=>[...ms,{id:uid(),home:null,away:null}]); }
-  function removeMatch(id){ setMatches(ms=>ms.filter(m=>m.id!==id)); }
-
+  const usedTeams=new Set(matches.flatMap(m=>[m.home,m.away].filter(Boolean)));
+  function setSlot(matchId,side,teamId){
+    const slot=allStandings.find(s=>s.teamId===teamId);
+    setMatches(ms=>ms.map(m=>m.id===matchId?{...m,[side]:teamId,[side+"Label"]:slot?.label||""}:m));
+  }
+  function addMatch(){setMatches(ms=>[...ms,{id:uid(),home:null,away:null,homeLabel:"",awayLabel:"",placesFor:null}]);}
+  function removeMatch(id){setMatches(ms=>ms.filter(m=>m.id!==id));}
   const canBuild=matches.every(m=>m.home&&m.away)&&matches.length>0;
 
   return <div style={{background:"rgba(255,165,0,.04)",border:"1px solid rgba(255,165,0,.2)",borderRadius:14,padding:16,marginBottom:16}}>
-    <div style={{fontSize:11,fontWeight:800,color:"#f4a261",marginBottom:14,letterSpacing:2}}>⚡ MECZE O MIEJSCA (KRZYŻOWE)</div>
-
+    <div style={{fontSize:11,fontWeight:800,color:"#f4a261",marginBottom:14,letterSpacing:2}}>⚡ MECZE O MIEJSCA</div>
     <div style={{marginBottom:12}}>
-      <div style={{fontSize:9,color:"#4a7a96",letterSpacing:2,marginBottom:6}}>NAZWA</div>
+      <div style={{fontSize:9,color:"#4a7a96",letterSpacing:2,marginBottom:6}}>NAZWA (np. "Mecze o miejsca 1-4")</div>
       <input value={name} onChange={e=>setName(e.target.value)} style={{width:"100%",padding:"9px 12px",borderRadius:10,border:"1px solid rgba(255,255,255,.1)",background:"rgba(255,255,255,.05)",color:"#fff",fontFamily:"inherit",fontSize:14,fontWeight:700,outline:"none"}}/>
     </div>
-
-    <div style={{marginBottom:12}}>
+    <div style={{marginBottom:14}}>
       <div style={{fontSize:9,color:"#4a7a96",letterSpacing:2,marginBottom:6}}>FORMAT</div>
       <div style={{display:"flex",gap:8}}>
         {Object.entries(FORMATS).map(([k,f])=><button key={k} onClick={()=>setFmt(k)} style={{flex:1,padding:"8px 4px",borderRadius:10,border:"1px solid",borderColor:fmt===k?"rgba(255,165,0,.5)":"rgba(255,255,255,.08)",background:fmt===k?"rgba(255,165,0,.1)":"transparent",color:fmt===k?"#f4a261":"#6a8fa8",fontFamily:"inherit",fontWeight:700,fontSize:11,cursor:"pointer"}}>{f.label}</button>)}
       </div>
     </div>
-
+    {lastGroupPhase&&lastGroupPhase.groups.length>=2&&<div style={{background:"rgba(244,162,97,.06)",border:"1px solid rgba(244,162,97,.2)",borderRadius:12,padding:12,marginBottom:12}}>
+      <div style={{fontSize:10,fontWeight:800,color:"#f4a261",marginBottom:8}}>⚡ AUTOSUGESTIA KRZYŻÓWEK</div>
+      <div style={{fontSize:9,color:"#4a7a96",marginBottom:8}}>Automatycznie: 1. {lastGroupPhase.groups[0]?.name} vs 1. {lastGroupPhase.groups[1]?.name} itd.</div>
+      <div style={{marginBottom:10}}>
+        <div style={{fontSize:9,color:"#4a7a96",letterSpacing:1,marginBottom:6}}>WALCZĄ O MIEJSCA STARTUJĄC OD:</div>
+        <div style={{display:"flex",gap:6}}>
+          {[1,5,9,13,17].map(n=><button key={n} onClick={()=>setStartPlace(n)} style={{flex:1,padding:"7px 2px",borderRadius:8,border:"1px solid",borderColor:startPlace===n?"rgba(244,162,97,.6)":"rgba(255,255,255,.08)",background:startPlace===n?"rgba(244,162,97,.15)":"transparent",color:startPlace===n?"#f4a261":"#6a8fa8",fontFamily:"inherit",fontSize:11,fontWeight:800,cursor:"pointer"}}>{n}.</button>)}
+        </div>
+      </div>
+      <button onClick={autoSuggest} style={{width:"100%",padding:"9px",borderRadius:9,border:"none",background:"linear-gradient(90deg,#f77f00,#f4a261)",color:"#fff",fontFamily:"inherit",fontWeight:900,fontSize:11,letterSpacing:2,cursor:"pointer"}}>GENERUJ KRZYŻÓWKI →</button>
+    </div>}
+    {autoStep==="preview"&&<div style={{background:"rgba(77,220,142,.06)",border:"1px solid rgba(77,220,142,.2)",borderRadius:8,padding:"7px 10px",marginBottom:10,fontSize:10,color:"#4ddc8e"}}>✓ Sugestia gotowa — możesz edytować pary poniżej</div>}
     <div style={{fontSize:9,color:"#4a7a96",letterSpacing:2,marginBottom:8}}>PARY MECZÓW</div>
-    {matches.map((m,i)=><div key={m.id} style={{display:"flex",alignItems:"center",gap:8,marginBottom:8,background:"rgba(255,255,255,.03)",borderRadius:10,padding:"8px 10px"}}>
-      <div style={{fontSize:11,color:"#4a7a96",fontWeight:700,width:20,flexShrink:0}}>{i+1}.</div>
-      <select value={m.home||""} onChange={e=>setSlot(m.id,"home",e.target.value||null)}
-        style={{flex:1,padding:"7px 8px",background:"rgba(255,255,255,.06)",border:"1px solid rgba(255,255,255,.1)",borderRadius:8,color:m.home?"#fff":"#445",fontFamily:"inherit",fontSize:11,outline:"none"}}>
-        <option value="">-- wybierz --</option>
-        {allStandings.map(s=><option key={s.teamId} value={s.teamId} disabled={!!(usedTeams.has(s.teamId)&&m.home!==s.teamId)}>{s.label} · {tournamentTeamMap[s.teamId]?.name||s.teamId}</option>)}
-      </select>
-      <span style={{color:"#334",fontWeight:900,fontSize:12,flexShrink:0}}>VS</span>
-      <select value={m.away||""} onChange={e=>setSlot(m.id,"away",e.target.value||null)}
-        style={{flex:1,padding:"7px 8px",background:"rgba(255,255,255,.06)",border:"1px solid rgba(255,255,255,.1)",borderRadius:8,color:m.away?"#fff":"#445",fontFamily:"inherit",fontSize:11,outline:"none"}}>
-        <option value="">-- wybierz --</option>
-        {allStandings.map(s=><option key={s.teamId} value={s.teamId} disabled={!!(usedTeams.has(s.teamId)&&m.away!==s.teamId)}>{s.label} · {tournamentTeamMap[s.teamId]?.name||s.teamId}</option>)}
-      </select>
-      <button onClick={()=>removeMatch(m.id)} style={{width:24,height:24,borderRadius:6,border:"1px solid rgba(255,60,60,.2)",background:"rgba(255,60,60,.07)",color:"#e05",fontSize:13,cursor:"pointer",lineHeight:1,flexShrink:0}}>×</button>
+    {matches.map((m,i)=><div key={m.id} style={{marginBottom:8,background:"rgba(255,255,255,.03)",borderRadius:10,padding:"8px 10px"}}>
+      <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:6}}>
+        <div style={{fontSize:10,color:"#f4a261",fontWeight:700,width:26,flexShrink:0}}>#{i+1}</div>
+        {m.placesFor&&<span style={{fontSize:9,background:"rgba(244,162,97,.1)",border:"1px solid rgba(244,162,97,.2)",borderRadius:10,padding:"1px 7px",color:"#f4a261"}}>o {m.placesFor}. miejsce</span>}
+        <div style={{flex:1}}/>
+        <button onClick={()=>removeMatch(m.id)} style={{width:20,height:20,borderRadius:5,border:"1px solid rgba(255,60,60,.2)",background:"rgba(255,60,60,.07)",color:"#e05",fontSize:11,cursor:"pointer",lineHeight:1}}>×</button>
+      </div>
+      <div style={{display:"flex",alignItems:"center",gap:6}}>
+        <select value={m.home||""} onChange={e=>setSlot(m.id,"home",e.target.value||null)}
+          style={{flex:1,padding:"7px 6px",background:"rgba(255,255,255,.06)",border:"1px solid rgba(255,255,255,.1)",borderRadius:8,color:m.home?"#fff":"#445",fontFamily:"inherit",fontSize:10,outline:"none"}}>
+          <option value="">-- gospodarz --</option>
+          {allStandings.map(s=><option key={s.teamId} value={s.teamId} disabled={!!(usedTeams.has(s.teamId)&&m.home!==s.teamId)}>{s.label} · {tournamentTeamMap[s.teamId]?.name}</option>)}
+        </select>
+        <span style={{color:"#334",fontWeight:900,fontSize:11,flexShrink:0}}>VS</span>
+        <select value={m.away||""} onChange={e=>setSlot(m.id,"away",e.target.value||null)}
+          style={{flex:1,padding:"7px 6px",background:"rgba(255,255,255,.06)",border:"1px solid rgba(255,255,255,.1)",borderRadius:8,color:m.away?"#fff":"#445",fontFamily:"inherit",fontSize:10,outline:"none"}}>
+          <option value="">-- gość --</option>
+          {allStandings.map(s=><option key={s.teamId} value={s.teamId} disabled={!!(usedTeams.has(s.teamId)&&m.away!==s.teamId)}>{s.label} · {tournamentTeamMap[s.teamId]?.name}</option>)}
+        </select>
+      </div>
+      {m.home&&m.away&&<div style={{fontSize:9,color:"#4a7a96",marginTop:4,textAlign:"center"}}>{tournamentTeamMap[m.home]?.name} vs {tournamentTeamMap[m.away]?.name}</div>}
     </div>)}
     <button onClick={addMatch} style={{width:"100%",padding:"8px",borderRadius:10,border:"1px dashed rgba(255,165,0,.2)",background:"transparent",color:"#f4a261",fontFamily:"inherit",fontWeight:700,fontSize:11,cursor:"pointer",marginBottom:12}}>+ DODAJ PARĘ</button>
-
     <button disabled={!canBuild} onClick={()=>canBuild&&onBuild({name,fmt,matches})}
       style={{width:"100%",padding:"12px",borderRadius:10,border:"none",background:canBuild?"linear-gradient(90deg,#f77f00,#f4a261)":"#1a2a3a",color:canBuild?"#fff":"#3a5a7a",fontFamily:"inherit",fontWeight:900,fontSize:12,letterSpacing:2,cursor:canBuild?"pointer":"not-allowed"}}>
       UTWÓRZ MECZE →
     </button>
+  </div>;
+}
+
+// ─── Final Classification helpers ─────────────────────────────────────────
+function buildFinalClassification(phases, teamMap) {
+  const placed=new Map();
+  // 1. from crossover phases
+  phases.forEach(phase=>{
+    if(phase.type!=="crossover") return;
+    const sorted=[...phase.matches].sort((a,b)=>(a.placesFor||99)-(b.placesFor||99));
+    sorted.forEach(m=>{
+      if(!m.played) return;
+      const winner=m.homeWins>m.awayWins?m.home:m.away;
+      const loser=m.homeWins>m.awayWins?m.away:m.home;
+      const place=m.placesFor||1;
+      if(!placed.has(winner)) placed.set(winner,place);
+      if(!placed.has(loser)) placed.set(loser,place+1);
+    });
+  });
+  // 2. from group phases (last first)
+  const usedPlaces=new Set(placed.values());
+  let nextPlace=placed.size>0?Math.max(...placed.values())+1:1;
+  [...phases].reverse().forEach(phase=>{
+    if(phase.type!=="group") return;
+    phase.groups.forEach(g=>{
+      const st=calcStandings(g.teamIds,phase.groupData[g.id]?.rounds||[]);
+      st.forEach(row=>{
+        if(!placed.has(row.id)){
+          while(usedPlaces.has(nextPlace)) nextPlace++;
+          placed.set(row.id,nextPlace);
+          usedPlaces.add(nextPlace);
+          nextPlace++;
+        }
+      });
+    });
+  });
+  const result=[];
+  placed.forEach((place,teamId)=>{result.push({place,teamId,team:teamMap[teamId]});});
+  return result.sort((a,b)=>a.place-b.place);
+}
+
+function FinalClassification({phases,teamMap}) {
+  const cl=buildFinalClassification(phases,teamMap);
+  const medals=["🥇","🥈","🥉"];
+  if(cl.length===0) return <div style={{textAlign:"center",padding:"40px 20px",color:"#334"}}>
+    <div style={{fontSize:32,marginBottom:8}}>🏆</div>
+    <div style={{fontSize:12,letterSpacing:2}}>BRAK DANYCH</div>
+    <div style={{fontSize:10,color:"#223",marginTop:6}}>Zakończ mecze aby zobaczyć klasyfikację</div>
+  </div>;
+  return <div>
+    <div style={{textAlign:"center",marginBottom:20}}>
+      <div style={{fontSize:32,marginBottom:4}}>🏆</div>
+      <div style={{fontSize:18,fontWeight:900,letterSpacing:3,background:"linear-gradient(90deg,#ffd166,#fff)",WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent"}}>KLASYFIKACJA KOŃCOWA</div>
+    </div>
+    {cl.length>=2&&<div style={{display:"flex",alignItems:"flex-end",justifyContent:"center",gap:8,marginBottom:20}}>
+      {[cl[1],cl[0],cl[2]].filter(Boolean).map((row,i)=>{
+        const podiumPos=[2,1,3][i];
+        const heights=[80,100,70];
+        const colors=["#c0c0c0","#ffd700","#cd7f32"];
+        return <div key={row.teamId} style={{textAlign:"center",flex:1,maxWidth:110}}>
+          <div style={{fontSize:i===1?22:16,marginBottom:4}}>{medals[podiumPos-1]}</div>
+          <div style={{width:7,height:7,borderRadius:"50%",background:row.team?.color||"#555",margin:"0 auto 4px"}}/>
+          <div style={{fontSize:i===1?12:10,fontWeight:800,color:"#fff",marginBottom:6,lineHeight:1.2}}>{row.team?.name||row.teamId}</div>
+          <div style={{height:heights[i],background:`linear-gradient(180deg,${colors[i]}33,${colors[i]}11)`,border:`1px solid ${colors[i]}66`,borderRadius:"8px 8px 0 0",display:"flex",alignItems:"center",justifyContent:"center"}}>
+            <span style={{fontSize:i===1?26:20,fontWeight:900,color:colors[i]}}>{podiumPos}</span>
+          </div>
+        </div>;
+      })}
+    </div>}
+    <div style={{background:"rgba(255,255,255,.03)",border:"1px solid rgba(255,255,255,.07)",borderRadius:14,overflow:"hidden"}}>
+      {cl.map((row,idx)=>{
+        const isTop3=row.place<=3;
+        const bgColors=["rgba(255,215,0,.08)","rgba(192,192,192,.06)","rgba(205,127,50,.06)"];
+        return <div key={row.teamId} style={{display:"flex",alignItems:"center",gap:12,padding:"11px 14px",borderBottom:idx<cl.length-1?"1px solid rgba(255,255,255,.05)":"none",background:isTop3?bgColors[row.place-1]:"transparent"}}>
+          <div style={{width:36,textAlign:"center",flexShrink:0}}>
+            {row.place<=3?<span style={{fontSize:20}}>{medals[row.place-1]}</span>:<span style={{fontSize:16,fontWeight:900,color:"#3a5a7a"}}>{row.place}</span>}
+          </div>
+          <div style={{width:32,height:32,borderRadius:8,background:row.team?.color||"#333",display:"flex",alignItems:"center",justifyContent:"center",fontSize:9,fontWeight:900,color:"#fff",flexShrink:0}}>{row.team?.short||"?"}</div>
+          <div style={{flex:1,fontSize:14,fontWeight:700,color:isTop3?"#fff":"#9ab"}}>{row.team?.name||row.teamId}</div>
+          {row.place===1&&<span style={{fontSize:9,background:"rgba(255,215,0,.15)",border:"1px solid rgba(255,215,0,.3)",borderRadius:10,padding:"2px 8px",color:"#ffd166",fontWeight:700}}>MISTRZ 🏆</span>}
+        </div>;
+      })}
+    </div>
   </div>;
 }
 
@@ -619,15 +745,19 @@ function Viewer({t}) {
       <div style={{display:"flex",gap:6,overflowX:"auto",paddingBottom:6}}>
         {t.phases.map((p,i)=>{
           const gc=p.type==="crossover"?"#f4a261":GC[i%GC.length];
-          return <button key={p.id} onClick={()=>setActivePhase(i)} style={{padding:"6px 12px",borderRadius:20,border:`1px solid ${activePhase===i?gc:"rgba(255,255,255,.1)"}`,background:activePhase===i?`${gc}18`:"rgba(255,255,255,.03)",color:activePhase===i?gc:"#4a7a96",fontFamily:"inherit",fontWeight:700,fontSize:10,cursor:"pointer",whiteSpace:"nowrap",flexShrink:0}}>{p.name}</button>;
+          return <button key={p.id} onClick={()=>{setActivePhase(i);}} style={{padding:"6px 12px",borderRadius:20,border:`1px solid ${activePhase===i?gc:"rgba(255,255,255,.1)"}`,background:activePhase===i?`${gc}18`:"rgba(255,255,255,.03)",color:activePhase===i?gc:"#4a7a96",fontFamily:"inherit",fontWeight:700,fontSize:10,cursor:"pointer",whiteSpace:"nowrap",flexShrink:0}}>{p.name}</button>;
         })}
+        <button onClick={()=>setActivePhase(-1)} style={{padding:"6px 12px",borderRadius:20,border:`1px solid ${activePhase===-1?"#ffd166":"rgba(255,255,255,.1)"}`,background:activePhase===-1?"rgba(255,215,0,.12)":"rgba(255,255,255,.03)",color:activePhase===-1?"#ffd166":"#4a7a96",fontFamily:"inherit",fontWeight:700,fontSize:10,cursor:"pointer",whiteSpace:"nowrap",flexShrink:0}}>🏆 KLASYFIKACJA</button>
       </div>
     </div>
     <div style={{maxWidth:600,margin:"12px auto",padding:"0 12px"}}>
-      {t.phases[activePhase]&&(t.phases[activePhase].type==="group"
-        ?<PhaseView phase={t.phases[activePhase]} phaseIdx={activePhase} teamMap={teamMap} tournamentTeamMap={teamMap} setPoints={t.setPoints} tiebreakPoints={t.tiebreakPoints} readOnly/>
-        :<CrossoverView phase={t.phases[activePhase]} phaseIdx={activePhase} teamMap={teamMap} setPoints={t.setPoints} tiebreakPoints={t.tiebreakPoints} readOnly/>
-      )}
+      {activePhase===-1
+        ?<FinalClassification phases={t.phases} teamMap={teamMap}/>
+        :t.phases[activePhase]&&(t.phases[activePhase].type==="group"
+          ?<PhaseView phase={t.phases[activePhase]} phaseIdx={activePhase} teamMap={teamMap} tournamentTeamMap={teamMap} setPoints={t.setPoints} tiebreakPoints={t.tiebreakPoints} readOnly/>
+          :<CrossoverView phase={t.phases[activePhase]} phaseIdx={activePhase} teamMap={teamMap} setPoints={t.setPoints} tiebreakPoints={t.tiebreakPoints} readOnly/>
+        )
+      }
     </div>
   </div>;
 }
@@ -644,6 +774,7 @@ export default function App() {
   const [copied,setCopied]=useState(false);
   const [addingPhase,setAddingPhase]=useState(null); // null | "group" | "crossover"
   const [activePhase,setActivePhase]=useState(0);
+  const [showClassification,setShowClassification]=useState(false);
 
   // setup state
   const [tName,setTName]=useState("Turniej 2025");
@@ -908,7 +1039,7 @@ export default function App() {
         {/* add next phase */}
         {addingPhase===null&&<div style={{marginTop:16}}>
           <div style={{fontSize:9,color:"#4a7a96",letterSpacing:3,marginBottom:10,textAlign:"center"}}>DODAJ NASTĘPNĄ FAZĘ</div>
-          <div style={{display:"flex",gap:10}}>
+          <div style={{display:"flex",gap:10,marginBottom:10}}>
             <button onClick={()=>setAddingPhase("group")} style={{flex:1,padding:"12px",borderRadius:12,border:"1px solid rgba(0,200,255,.25)",background:"rgba(0,200,255,.06)",color:"#00c8ff",fontFamily:"inherit",fontWeight:800,fontSize:12,letterSpacing:1,cursor:"pointer"}}>
               <div style={{fontSize:18,marginBottom:4}}>🏐</div>
               FAZA GRUPOWA
@@ -920,6 +1051,10 @@ export default function App() {
               <div style={{fontSize:9,opacity:.7,marginTop:2}}>krzyżowe pary</div>
             </button>
           </div>
+          {/* Finish tournament + classification */}
+          <button onClick={()=>setShowClassification(true)} style={{width:"100%",padding:"13px",borderRadius:12,border:"1px solid rgba(255,215,0,.3)",background:"rgba(255,215,0,.07)",color:"#ffd166",fontFamily:"inherit",fontWeight:900,fontSize:13,letterSpacing:2,cursor:"pointer"}}>
+            🏆 KLASYFIKACJA KOŃCOWA / ZAKOŃCZ TURNIEJ
+          </button>
         </div>}
 
         {addingPhase==="group"&&<div style={{marginTop:16}}>
@@ -932,6 +1067,18 @@ export default function App() {
           <CrossoverBuilder prevPhases={phases} tournamentTeamMap={teamMap} defaultFmt={tournament.defaultFormat} onBuild={buildCrossover}/>
         </div>}
       </div>
+
+      {/* classification modal */}
+      {showClassification&&<div onClick={()=>setShowClassification(false)} style={{position:"fixed",inset:0,background:"rgba(0,0,0,.85)",backdropFilter:"blur(8px)",display:"flex",alignItems:"flex-start",justifyContent:"center",zIndex:400,padding:"16px",overflowY:"auto"}}>
+        <div onClick={e=>e.stopPropagation()} style={{background:"#0a1828",border:"1px solid rgba(255,215,0,.25)",borderRadius:20,padding:20,width:"100%",maxWidth:480,marginTop:16,marginBottom:40}}>
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:16}}>
+            <div style={{fontSize:11,fontWeight:800,color:"#ffd166",letterSpacing:2}}>🏆 KLASYFIKACJA KOŃCOWA</div>
+            <button onClick={()=>setShowClassification(false)} style={{width:28,height:28,borderRadius:7,border:"1px solid rgba(255,255,255,.1)",background:"transparent",color:"#7a9bb5",fontSize:16,cursor:"pointer",lineHeight:1}}>×</button>
+          </div>
+          <FinalClassification phases={tournament.phases||[]} teamMap={teamMap}/>
+          <button onClick={()=>setShowClassification(false)} style={{width:"100%",marginTop:16,padding:"11px",borderRadius:10,border:"1px solid rgba(255,255,255,.1)",background:"transparent",color:"#4a7a96",fontFamily:"inherit",fontWeight:700,fontSize:11,letterSpacing:2,cursor:"pointer"}}>ZAMKNIJ</button>
+        </div>
+      </div>}
 
       {/* share modal */}
       {shareModal&&<div onClick={()=>setShareModal(false)} style={{position:"fixed",inset:0,background:"rgba(0,0,0,.8)",backdropFilter:"blur(8px)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:300,padding:16}}>
