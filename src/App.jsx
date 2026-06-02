@@ -1,4 +1,5 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
+import * as React from "react";
 
 const uid = () => Math.random().toString(36).slice(2, 9);
 const COLORS = ["#e63946","#f4a261","#2a9d8f","#4361ee","#7209b7","#f72585","#06d6a0","#ffd166","#118ab2","#ef476f","#073b4c","#06aed5","#f77f00","#4cc9f0","#80b918","#e9c46a"];
@@ -48,8 +49,10 @@ function load() { try { return JSON.parse(localStorage.getItem(LS_KEY)||"{}"); }
 function persist(data) { try { localStorage.setItem(LS_KEY,JSON.stringify(data)); } catch {} }
 
 // ─── small UI ─────────────────────────────────────────────────────────────
-function Badge({color,short,size=32}) {
-  return <div style={{width:size,height:size,borderRadius:7,background:color||"#555",flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",fontSize:size<28?8:9,fontWeight:900,color:"#fff"}}>{short||"?"}</div>;
+function Badge({color,short,size=32,logo}) {
+  return <div style={{width:size,height:size,borderRadius:7,background:logo?"#1a1a2e":color||"#555",flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",fontSize:size<28?8:9,fontWeight:900,color:"#fff",overflow:"hidden",border:logo?"1px solid rgba(255,255,255,.1)":"none"}}>
+    {logo?<img src={logo} style={{width:"100%",height:"100%",objectFit:"contain",padding:2}} alt=""/>:(short||"?")}
+  </div>;
 }
 function Num({value,onChange,disabled}) {
   return <input type="number" min={0} max={99} value={value} disabled={disabled} onChange={e=>onChange(e.target.value)}
@@ -691,6 +694,89 @@ function FinalClassification({phases,teamMap}) {
 }
 
 // ─── Crossover Phase View ─────────────────────────────────────────────────
+
+// ─── QR Code (pure SVG, no library) ──────────────────────────────────────
+function QRCode({url,size=200}) {
+  // Use a free QR API service via img tag
+  const encoded=encodeURIComponent(url);
+  return <div style={{background:"#fff",padding:8,borderRadius:12,display:"inline-block"}}>
+    <img src={`https://api.qrserver.com/v1/create-qr-code/?size=${size}x${size}&data=${encoded}&format=svg`}
+      width={size} height={size} alt="QR kod" style={{display:"block",borderRadius:6}}
+      onError={e=>{e.target.style.display="none";}}/>
+  </div>;
+}
+
+// ─── Logo Upload ──────────────────────────────────────────────────────────
+function LogoUpload({value,onChange,label,size=64}) {
+  const ref=React.useRef();
+  function handleFile(e){
+    const file=e.target.files[0]; if(!file) return;
+    const reader=new FileReader();
+    reader.onload=ev=>onChange(ev.target.result);
+    reader.readAsDataURL(file);
+  }
+  return <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:6}}>
+    <div onClick={()=>ref.current.click()} style={{width:size,height:size,borderRadius:size>60?12:8,border:"2px dashed rgba(255,255,255,.2)",background:"rgba(255,255,255,.04)",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",overflow:"hidden",flexShrink:0}}>
+      {value?<img src={value} style={{width:"100%",height:"100%",objectFit:"contain"}} alt="logo"/>:<span style={{fontSize:size>60?22:14,opacity:.4}}>+</span>}
+    </div>
+    <div style={{fontSize:9,color:"#4a7a96",letterSpacing:1,textAlign:"center"}}>{label}</div>
+    <input ref={ref} type="file" accept="image/*" onChange={handleFile} style={{display:"none"}}/>
+    {value&&<button onClick={e=>{e.stopPropagation();onChange(null);}} style={{fontSize:9,color:"#e05",background:"transparent",border:"none",cursor:"pointer"}}>usuń</button>}
+  </div>;
+}
+
+// ─── PDF Export ───────────────────────────────────────────────────────────
+function exportClassificationPDF(phases,teamMap,tournamentName,tournamentLogo,sponsorLogos) {
+  const cl=buildFinalClassification(phases,teamMap);
+  const medals=["🥇","🥈","🥉"];
+  const now=new Date().toLocaleDateString("pl-PL");
+
+  let rows="";
+  cl.forEach(row=>{
+    const medal=row.place<=3?medals[row.place-1]:"";
+    const bg=row.place===1?"#fff9e6":row.place===2?"#f8f8f8":row.place===3?"#fff4ec":"#ffffff";
+    const bold=row.place<=3?"font-weight:bold;":"";
+    rows+=`<tr style="background:${bg}">
+      <td style="padding:8px 12px;text-align:center;font-size:18px;">${medal||row.place}</td>
+      <td style="padding:8px 12px;${bold}font-size:14px;">${row.team?.name||row.teamId}</td>
+    </tr>`;
+  });
+
+  let sponsorImgs="";
+  if(sponsorLogos&&sponsorLogos.filter(Boolean).length>0){
+    sponsorImgs=`<div style="margin-top:24px;display:flex;gap:16px;align-items:center;justify-content:center;flex-wrap:wrap;">
+      ${sponsorLogos.filter(Boolean).map(l=>`<img src="${l}" style="height:40px;object-fit:contain;" />`).join("")}
+    </div>`;
+  }
+
+  const html=`<!DOCTYPE html><html><head><meta charset="utf-8"/>
+  <title>Klasyfikacja - ${tournamentName}</title>
+  <style>
+    body{font-family:'Arial',sans-serif;margin:0;padding:24px;background:#fff;color:#111;}
+    h1{text-align:center;font-size:22px;margin-bottom:4px;}
+    .sub{text-align:center;color:#666;font-size:12px;margin-bottom:20px;}
+    table{width:100%;border-collapse:collapse;border:1px solid #ddd;border-radius:8px;overflow:hidden;}
+    th{background:#0a1828;color:#fff;padding:10px 12px;font-size:11px;letter-spacing:1px;text-align:left;}
+    tr:nth-child(even){background:#f9f9f9;}
+    .logo{display:block;max-height:80px;margin:0 auto 12px;object-fit:contain;}
+    @media print{body{padding:0;}}
+  </style></head><body>
+  ${tournamentLogo?`<img src="${tournamentLogo}" class="logo" />`:""}
+  <h1>🏆 ${tournamentName}</h1>
+  <div class="sub">Klasyfikacja końcowa · ${now}</div>
+  <table>
+    <thead><tr><th style="width:60px;text-align:center;">#</th><th>Drużyna</th></tr></thead>
+    <tbody>${rows}</tbody>
+  </table>
+  ${sponsorImgs}
+  </body></html>`;
+
+  const win=window.open("","_blank","width=600,height=800");
+  win.document.write(html);
+  win.document.close();
+  setTimeout(()=>win.print(),500);
+}
+
 function CrossoverView({phase, phaseIdx, teamMap, setPoints, tiebreakPoints, onUpdateMatch, readOnly}) {
   const [modal,setModal]=useState(null);
   const gc="#f4a261";
@@ -732,7 +818,7 @@ function Viewer({t}) {
     <div style={{background:"#0a1520",borderBottom:"2px solid rgba(0,200,255,.2)",padding:"10px 14px"}}>
       <div style={{maxWidth:600,margin:"0 auto",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
         <div style={{display:"flex",alignItems:"center",gap:8}}>
-          <span style={{fontSize:18}}>🏐</span>
+          {t.tournamentLogo?<img src={t.tournamentLogo} style={{width:34,height:34,objectFit:"contain",borderRadius:7,background:"#fff",padding:2,flexShrink:0}} alt="logo"/>:<span style={{fontSize:18}}>🏐</span>}
           <div>
             <div style={{fontSize:17,fontWeight:900,letterSpacing:2,background:"linear-gradient(90deg,#fff,#00c8ff)",WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent"}}>{t.name}</div>
             <div style={{fontSize:8,color:"#4a7a96",letterSpacing:2}}>PODGLĄD LIVE · {t.phases.length} FAZ</div>
@@ -778,6 +864,8 @@ export default function App() {
 
   // setup state
   const [tName,setTName]=useState("Turniej 2025");
+  const [tournamentLogo,setTournamentLogo]=useState(null);
+  const [sponsorLogos,setSponsorLogos]=useState([null,null,null]);
   const [sp,setSp]=useState(25); const [tb,setTb]=useState(15);
   const [cs,setCs]=useState("25"); const [ct,setCt]=useState("15");
   const [defFmt,setDefFmt]=useState("bo3");
@@ -832,7 +920,7 @@ export default function App() {
     const gd={};
     initGroups.forEach(g=>{gd[g.id]={rounds:genRR(g.teamIds,defFmt)};});
     const phase0={id:uid(),type:"group",name:"Faza grupowa",groups:initGroups,groupData:gd};
-    const t={id,name:tName,setPoints:setP,tiebreakPoints:tbP,defaultFormat:defFmt,teamsPool:pool,phases:[phase0],createdAt:Date.now()};
+    const t={id,name:tName,setPoints:setP,tiebreakPoints:tbP,defaultFormat:defFmt,teamsPool:pool,phases:[phase0],createdAt:Date.now(),tournamentLogo,sponsorLogos};
     const next={...tournaments,[id]:t};
     saveTournaments(next); setTid(id); setActivePhase(0); setScreen("manage");
   }
@@ -931,6 +1019,17 @@ export default function App() {
         <div style={{fontSize:16,fontWeight:900,letterSpacing:2}}>NOWY TURNIEJ</div>
       </div>
       <Sec title="NAZWA"><input value={tName} onChange={e=>setTName(e.target.value)} style={{width:"100%",padding:"10px 14px",borderRadius:10,border:"1px solid rgba(255,255,255,.1)",background:"rgba(255,255,255,.05)",color:"#fff",fontFamily:"inherit",fontSize:15,fontWeight:700}}/></Sec>
+      <Sec title="LOGO TURNIEJU I SPONSORZY">
+        <div style={{display:"flex",gap:16,flexWrap:"wrap",alignItems:"flex-start"}}>
+          <LogoUpload value={tournamentLogo} onChange={setTournamentLogo} label="Logo turnieju" size={80}/>
+          <div style={{flex:1}}>
+            <div style={{fontSize:9,color:"#4a7a96",letterSpacing:2,marginBottom:8}}>SPONSORZY (maks. 3)</div>
+            <div style={{display:"flex",gap:12,flexWrap:"wrap"}}>
+              {sponsorLogos.map((logo,i)=><LogoUpload key={i} value={logo} onChange={v=>setSponsorLogos(p=>{const n=[...p];n[i]=v;return n;})} label={`Sponsor ${i+1}`} size={56}/>)}
+            </div>
+          </div>
+        </div>
+      </Sec>
       <Sec title="LIMITY PUNKTÓW">
         <div style={{display:"flex",gap:8,marginBottom:12}}>
           {PRESETS.map(p=><button key={p.label} onClick={()=>{setSp(p.set);setTb(p.tb);setCs(String(p.set));setCt(String(p.tb));}} style={{flex:1,padding:"8px 4px",borderRadius:10,border:"1px solid",borderColor:sp===p.set&&tb===p.tb?"rgba(0,200,255,.5)":"rgba(255,255,255,.08)",background:sp===p.set&&tb===p.tb?"rgba(0,200,255,.12)":"transparent",color:sp===p.set&&tb===p.tb?"#00c8ff":"#7a9bb5",fontFamily:"inherit",fontWeight:700,fontSize:11,cursor:"pointer"}}><div>{p.label}</div><div style={{fontSize:8,opacity:.7}}>do {p.set}/TB {p.tb}</div></button>)}
@@ -952,7 +1051,11 @@ export default function App() {
           {pool.map(t=>{
             const inG=initGroups.find(g=>g.teamIds.includes(t.id));
             return <div key={t.id} style={{display:"flex",alignItems:"center",gap:8,background:"rgba(255,255,255,.04)",border:"1px solid rgba(255,255,255,.06)",borderRadius:9,padding:"7px 10px"}}>
-              <div style={{width:8,height:8,borderRadius:"50%",background:t.color,flexShrink:0}}/>
+              <div style={{position:"relative",flexShrink:0}} onClick={()=>document.getElementById("logo-"+t.id)?.click()}>
+                <Badge color={t.color} short={t.short} size={32} logo={t.logo}/>
+                <div style={{position:"absolute",bottom:-2,right:-2,width:12,height:12,borderRadius:"50%",background:"#0a1828",border:"1px solid rgba(255,255,255,.2)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:7,cursor:"pointer"}}>📷</div>
+                <input id={"logo-"+t.id} type="file" accept="image/*" style={{display:"none"}} onChange={e=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=ev=>setPool(p=>p.map(x=>x.id===t.id?{...x,logo:ev.target.result}:x));r.readAsDataURL(f);}}/>
+              </div>
               <div style={{flex:1,fontSize:13,fontWeight:700}}>{t.name}</div>
               {inG&&<span style={{fontSize:9,color:GC[initGroups.indexOf(inG)%GC.length],padding:"2px 6px",borderRadius:10,background:"rgba(0,0,0,.3)"}}>{inG.name}</span>}
               <button onClick={()=>{setPool(p=>p.filter(x=>x.id!==t.id));setInitGroups(gs=>gs.map(g=>({...g,teamIds:g.teamIds.filter(id=>id!==t.id)})));}} style={{width:24,height:24,borderRadius:6,border:"1px solid rgba(255,60,60,.2)",background:"rgba(255,60,60,.07)",color:"#e05",fontSize:14,cursor:"pointer",lineHeight:1}}>×</button>
@@ -1075,16 +1178,36 @@ export default function App() {
             <div style={{fontSize:11,fontWeight:800,color:"#ffd166",letterSpacing:2}}>🏆 KLASYFIKACJA KOŃCOWA</div>
             <button onClick={()=>setShowClassification(false)} style={{width:28,height:28,borderRadius:7,border:"1px solid rgba(255,255,255,.1)",background:"transparent",color:"#7a9bb5",fontSize:16,cursor:"pointer",lineHeight:1}}>×</button>
           </div>
+          {/* tournament logo in classification */}
+          {tournament.tournamentLogo&&<div style={{textAlign:"center",marginBottom:12}}><img src={tournament.tournamentLogo} style={{maxHeight:70,maxWidth:"80%",objectFit:"contain"}} alt="logo"/></div>}
           <FinalClassification phases={tournament.phases||[]} teamMap={teamMap}/>
-          <button onClick={()=>setShowClassification(false)} style={{width:"100%",marginTop:16,padding:"11px",borderRadius:10,border:"1px solid rgba(255,255,255,.1)",background:"transparent",color:"#4a7a96",fontFamily:"inherit",fontWeight:700,fontSize:11,letterSpacing:2,cursor:"pointer"}}>ZAMKNIJ</button>
+          {/* sponsor logos */}
+          {tournament.sponsorLogos&&tournament.sponsorLogos.some(Boolean)&&<div style={{display:"flex",gap:12,justifyContent:"center",alignItems:"center",marginTop:16,padding:"12px 0",borderTop:"1px solid rgba(255,255,255,.07)",flexWrap:"wrap"}}>
+            {tournament.sponsorLogos.filter(Boolean).map((l,i)=><img key={i} src={l} style={{height:36,objectFit:"contain"}} alt={`sponsor ${i+1}`}/>)}
+          </div>}
+          <div style={{display:"flex",gap:10,marginTop:16}}>
+            <button onClick={()=>exportClassificationPDF(tournament.phases||[],teamMap,tournament.name,tournament.tournamentLogo,tournament.sponsorLogos)} style={{flex:1,padding:"11px",borderRadius:10,border:"1px solid rgba(255,165,0,.3)",background:"rgba(255,165,0,.08)",color:"#f4a261",fontFamily:"inherit",fontWeight:700,fontSize:11,letterSpacing:1,cursor:"pointer"}}>📄 EKSPORT PDF</button>
+            <button onClick={()=>setShowClassification(false)} style={{flex:1,padding:"11px",borderRadius:10,border:"1px solid rgba(255,255,255,.1)",background:"transparent",color:"#4a7a96",fontFamily:"inherit",fontWeight:700,fontSize:11,letterSpacing:2,cursor:"pointer"}}>ZAMKNIJ</button>
+          </div>
         </div>
       </div>}
 
       {/* share modal */}
-      {shareModal&&<div onClick={()=>setShareModal(false)} style={{position:"fixed",inset:0,background:"rgba(0,0,0,.8)",backdropFilter:"blur(8px)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:300,padding:16}}>
-        <div onClick={e=>e.stopPropagation()} style={{background:"#0a1828",border:"1px solid rgba(0,200,255,.3)",borderRadius:20,padding:24,width:"100%",maxWidth:400}}>
-          <div style={{textAlign:"center",marginBottom:20}}><div style={{fontSize:32,marginBottom:8}}>📡</div><div style={{fontSize:16,fontWeight:900,letterSpacing:2}}>LINK DLA KIBICÓW</div><div style={{fontSize:11,color:"#4a7a96",marginTop:4}}>Odświeżanie co 4 sekundy</div></div>
-          <div style={{background:"rgba(0,200,255,.06)",border:"1px solid rgba(0,200,255,.2)",borderRadius:10,padding:"12px 14px",marginBottom:14,wordBreak:"break-all",fontSize:11,color:"#7a9bb5",lineHeight:1.5}}>{shareUrl}</div>
+      {shareModal&&<div onClick={()=>setShareModal(false)} style={{position:"fixed",inset:0,background:"rgba(0,0,0,.85)",backdropFilter:"blur(8px)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:300,padding:16,overflowY:"auto"}}>
+        <div onClick={e=>e.stopPropagation()} style={{background:"#0a1828",border:"1px solid rgba(0,200,255,.3)",borderRadius:20,padding:24,width:"100%",maxWidth:420}}>
+          <div style={{textAlign:"center",marginBottom:16}}>
+            <div style={{fontSize:28,marginBottom:6}}>📡</div>
+            <div style={{fontSize:16,fontWeight:900,letterSpacing:2}}>LINK DLA KIBICÓW</div>
+            <div style={{fontSize:11,color:"#4a7a96",marginTop:4}}>Odświeżanie co 4 sekundy</div>
+          </div>
+          {/* QR Code */}
+          <div style={{display:"flex",justifyContent:"center",marginBottom:16}}>
+            <div style={{padding:12,background:"rgba(255,255,255,.03)",border:"1px solid rgba(255,255,255,.08)",borderRadius:16}}>
+              <QRCode url={shareUrl} size={180}/>
+              <div style={{fontSize:9,color:"#4a7a96",textAlign:"center",marginTop:8,letterSpacing:1}}>ZRÓB ZDJĘCIE QR · WYŚLIJ KIBICOM</div>
+            </div>
+          </div>
+          <div style={{background:"rgba(0,200,255,.06)",border:"1px solid rgba(0,200,255,.2)",borderRadius:10,padding:"10px 14px",marginBottom:12,wordBreak:"break-all",fontSize:10,color:"#7a9bb5",lineHeight:1.5}}>{shareUrl}</div>
           <button onClick={copyLink} style={{width:"100%",padding:"13px",borderRadius:11,border:"none",background:copied?"linear-gradient(90deg,#00aa44,#00dd66)":"linear-gradient(90deg,#0077ff,#00c8ff)",color:"#fff",fontFamily:"inherit",fontWeight:900,fontSize:13,letterSpacing:2,cursor:"pointer",marginBottom:10}}>{copied?"✓ SKOPIOWANO!":"KOPIUJ LINK"}</button>
           <button onClick={()=>setShareModal(false)} style={{width:"100%",padding:"10px",borderRadius:10,border:"1px solid rgba(255,255,255,.1)",background:"transparent",color:"#4a7a96",fontFamily:"inherit",fontWeight:700,fontSize:11,cursor:"pointer"}}>ZAMKNIJ</button>
         </div>
