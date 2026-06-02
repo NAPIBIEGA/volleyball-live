@@ -610,6 +610,137 @@ function CrossoverBuilder({prevPhases, tournamentTeamMap, onBuild, defaultFmt}) 
   </div>;
 }
 
+// ─── Print / PDF helpers ──────────────────────────────────────────────────
+function exportPhasePDF(phases, teamMap, tournamentName, tournamentLogo, sponsorLogos) {
+  const now = new Date().toLocaleDateString("pl-PL");
+
+  let phaseSections = "";
+  phases.forEach((phase, pi) => {
+    if (phase.type === "group") {
+      phase.groups.forEach((g, gi) => {
+        const rounds = phase.groupData[g.id]?.rounds || [];
+        const st = calcStandings(g.teamIds, rounds);
+        const gc = ["#0077cc","#cc5500","#006633","#990066","#996600","#333399"][gi % 6];
+
+        // standings table
+        let rows = "";
+        st.forEach((row, idx) => {
+          const t = teamMap[row.id];
+          const sR = row.sl ? (row.sw / row.sl).toFixed(3) : row.sw.toFixed(3);
+          const pR = row.pl ? (row.pw / row.pl).toFixed(3) : row.pw.toFixed(3);
+          const bg = idx === 0 ? "#fffbe6" : idx % 2 === 0 ? "#f9f9f9" : "#fff";
+          const logoHtml = t?.logo ? `<img src="${t.logo}" style="width:20px;height:20px;object-fit:contain;vertical-align:middle;margin-right:4px;border-radius:3px;" />` : `<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${t?.color||"#999"};margin-right:6px;vertical-align:middle;"></span>`;
+          rows += `<tr style="background:${bg}">
+            <td style="padding:6px 8px;text-align:center;font-weight:bold;color:${idx===0?gc:"#555"}">${idx+1}</td>
+            <td style="padding:6px 8px;">${logoHtml}${t?.name||row.id}</td>
+            <td style="padding:6px 8px;text-align:center;">${row.mp}</td>
+            <td style="padding:6px 8px;text-align:center;font-weight:bold;font-size:15px;">${row.pts}</td>
+            <td style="padding:6px 8px;text-align:center;">${row.sw}:${row.sl}</td>
+            <td style="padding:6px 8px;text-align:center;color:${parseFloat(sR)>=1?"#267326":"#cc2200"}">${sR}</td>
+            <td style="padding:6px 8px;text-align:center;">${row.pw}:${row.pl}</td>
+            <td style="padding:6px 8px;text-align:center;color:${parseFloat(pR)>=1?"#267326":"#cc2200"}">${pR}</td>
+          </tr>`;
+        });
+
+        // results
+        let resultRows = "";
+        rounds.forEach(round => {
+          round.matches.filter(m => m.played).forEach(m => {
+            const h = teamMap[m.home], a = teamMap[m.away];
+            const sets = m.sets.map((s,i) => `<span style="font-size:10px;background:#f0f0f0;padding:1px 5px;border-radius:3px;margin:1px;">${s.home}:${s.away}</span>`).join("");
+            resultRows += `<tr>
+              <td style="padding:5px 8px;text-align:right;font-weight:600;">${h?.name||m.home}</td>
+              <td style="padding:5px 8px;text-align:center;font-weight:900;font-size:16px;">${m.homeWins}<span style="color:#ccc;margin:0 4px">:</span>${m.awayWins}</td>
+              <td style="padding:5px 8px;font-weight:600;">${a?.name||m.away}</td>
+              <td style="padding:5px 8px;text-align:center;">${sets}</td>
+            </tr>`;
+          });
+        });
+
+        phaseSections += `
+          <div class="section" style="margin-bottom:28px;page-break-inside:avoid;">
+            <div style="background:${gc};color:#fff;padding:8px 14px;border-radius:8px 8px 0 0;font-size:13px;font-weight:bold;letter-spacing:1px;">
+              ${phase.name} — ${g.name}
+            </div>
+            <table style="width:100%;border-collapse:collapse;border:1px solid #ddd;border-top:none;margin-bottom:12px;">
+              <thead><tr style="background:#f0f0f0;">
+                <th style="padding:6px 8px;font-size:10px;text-align:center;">#</th>
+                <th style="padding:6px 8px;font-size:10px;text-align:left;">Drużyna</th>
+                <th style="padding:6px 8px;font-size:10px;text-align:center;">M</th>
+                <th style="padding:6px 8px;font-size:10px;text-align:center;">PKT</th>
+                <th style="padding:6px 8px;font-size:10px;text-align:center;">Sety</th>
+                <th style="padding:6px 8px;font-size:10px;text-align:center;">R.Setów</th>
+                <th style="padding:6px 8px;font-size:10px;text-align:center;">Małe PKT</th>
+                <th style="padding:6px 8px;font-size:10px;text-align:center;">R.M.PKT</th>
+              </tr></thead>
+              <tbody>${rows}</tbody>
+            </table>
+            ${resultRows ? `<div style="font-size:11px;font-weight:bold;color:#555;margin-bottom:6px;letter-spacing:1px;">WYNIKI MECZÓW</div>
+            <table style="width:100%;border-collapse:collapse;border:1px solid #eee;">
+              <tbody>${resultRows}</tbody>
+            </table>` : ""}
+          </div>`;
+      });
+    } else if (phase.type === "crossover") {
+      let matchRows = "";
+      phase.matches.forEach((m, i) => {
+        const h = teamMap[m.home], a = teamMap[m.away];
+        const sets = m.sets.map(s => `${s.home}:${s.away}`).join(", ");
+        const bg = i % 2 === 0 ? "#fff" : "#f9f9f9";
+        const placeLabel = m.placesFor ? `<span style="font-size:9px;background:#fff3e0;padding:1px 5px;border-radius:8px;color:#e65100;margin-right:6px;">o ${m.placesFor}. m.</span>` : "";
+        matchRows += `<tr style="background:${bg}">
+          <td style="padding:6px 8px;">${placeLabel}</td>
+          <td style="padding:6px 8px;text-align:right;font-weight:600;">${h?.name||m.homeLabel||"?"}</td>
+          <td style="padding:6px 8px;text-align:center;font-weight:900;font-size:16px;">${m.played?`${m.homeWins}<span style="color:#ccc;margin:0 4px">:</span>${m.awayWins}`:"vs"}</td>
+          <td style="padding:6px 8px;font-weight:600;">${a?.name||m.awayLabel||"?"}</td>
+          <td style="padding:6px 8px;text-align:center;font-size:10px;color:#666;">${sets}</td>
+        </tr>`;
+      });
+      phaseSections += `
+        <div class="section" style="margin-bottom:28px;page-break-inside:avoid;">
+          <div style="background:#e65100;color:#fff;padding:8px 14px;border-radius:8px 8px 0 0;font-size:13px;font-weight:bold;letter-spacing:1px;">
+            ⚡ ${phase.name}
+          </div>
+          <table style="width:100%;border-collapse:collapse;border:1px solid #ddd;border-top:none;">
+            <tbody>${matchRows}</tbody>
+          </table>
+        </div>`;
+    }
+  });
+
+  let sponsorBar = "";
+  if (sponsorLogos && sponsorLogos.filter(Boolean).length > 0) {
+    sponsorBar = `<div style="margin-top:20px;display:flex;gap:16px;justify-content:center;align-items:center;padding-top:12px;border-top:1px solid #eee;flex-wrap:wrap;">
+      ${sponsorLogos.filter(Boolean).map(l => `<img src="${l}" style="height:36px;object-fit:contain;" />`).join("")}
+    </div>`;
+  }
+
+  const html = `<!DOCTYPE html><html><head><meta charset="utf-8"/>
+  <title>${tournamentName} — Tabele</title>
+  <style>
+    body{font-family:Arial,sans-serif;margin:0;padding:20px;background:#fff;color:#111;font-size:13px;}
+    h1{text-align:center;font-size:20px;margin-bottom:2px;}
+    .sub{text-align:center;color:#666;font-size:11px;margin-bottom:20px;}
+    .logo{display:block;max-height:70px;margin:0 auto 10px;object-fit:contain;}
+    @media print{
+      body{padding:10px;}
+      .section{page-break-inside:avoid;}
+      @page{margin:1.5cm;}
+    }
+  </style></head><body>
+  ${tournamentLogo ? `<img src="${tournamentLogo}" class="logo"/>` : ""}
+  <h1>🏐 ${tournamentName}</h1>
+  <div class="sub">Tabele i wyniki · ${now}</div>
+  ${phaseSections}
+  ${sponsorBar}
+  </body></html>`;
+
+  const win = window.open("","_blank","width=800,height=900");
+  win.document.write(html);
+  win.document.close();
+  setTimeout(() => win.print(), 600);
+}
+
 // ─── Final Classification helpers ─────────────────────────────────────────
 function buildFinalClassification(phases, teamMap) {
   const placed=new Map();
@@ -1112,6 +1243,7 @@ export default function App() {
                 <div style={{fontSize:8,color:"#4a7a96"}}>do {tournament.setPoints} · TB {tournament.tiebreakPoints} · {phases.length} faz · {played}/{allM.length} meczów</div>
               </div>
             </div>
+            <button onClick={()=>exportPhasePDF(tournament.phases||[],teamMap,tournament.name,tournament.tournamentLogo,tournament.sponsorLogos)} style={{padding:"6px 10px",borderRadius:8,border:"1px solid rgba(255,165,0,.3)",background:"rgba(255,165,0,.08)",color:"#f4a261",fontFamily:"inherit",fontWeight:700,fontSize:10,cursor:"pointer"}}>PDF</button>
             <button onClick={()=>setShareModal(true)} style={{padding:"6px 10px",borderRadius:8,border:"1px solid rgba(0,200,255,.3)",background:"rgba(0,200,255,.1)",color:"#00c8ff",fontFamily:"inherit",fontWeight:700,fontSize:10,cursor:"pointer"}}>📡 LIVE</button>
           </div>
           {/* phase tabs */}
