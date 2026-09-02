@@ -223,6 +223,7 @@ function PhaseView({phase, phaseIdx, teamMap, setPoints, tiebreakPoints, onUpdat
       <div style={{width:32,height:32,borderRadius:8,background:`linear-gradient(135deg,${gc_phase},${gc_phase}aa)`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,fontWeight:900,flexShrink:0}}>{phaseIdx+1}</div>
       <div style={{flex:1}}>
         <div style={{fontSize:14,fontWeight:900,color:gc_phase,letterSpacing:1}}>{phase.name}</div>
+        {curG?.placesLabel&&<div style={{fontSize:11,fontWeight:800,color:gc_phase,opacity:.9}}>{curG.name} — {curG.placesLabel}</div>}
         <div style={{fontSize:10,color:"#4a7a96"}}>{phase.groups.length} grup · {played}/{allM.length} meczów{phaseDone?" · ✓ zakończona":""}</div>
       </div>
       {phaseDone&&<div style={{fontSize:18}}>✅</div>}
@@ -240,7 +241,7 @@ function PhaseView({phase, phaseIdx, teamMap, setPoints, tiebreakPoints, onUpdat
         const gc=GC[(phaseIdx*4+gi)%GC.length];
         const gp=(phase.groupData[g.id]?.rounds||[]).flatMap(r=>r.matches).filter(m=>m.played).length;
         const gt=(phase.groupData[g.id]?.rounds||[]).flatMap(r=>r.matches).length;
-        return <button key={g.id} onClick={()=>setAg(g.id)} style={{padding:"5px 12px",borderRadius:20,border:`1px solid ${ag===g.id?gc:"rgba(255,255,255,.1)"}`,background:ag===g.id?`${gc}18`:"rgba(255,255,255,.03)",color:ag===g.id?gc:"#4a7a96",fontFamily:"inherit",fontWeight:700,fontSize:10,cursor:"pointer",whiteSpace:"nowrap",flexShrink:0}}>{g.name} <span style={{opacity:.6,fontSize:9}}>{gp}/{gt}</span></button>;
+        return <button key={g.id} onClick={()=>setAg(g.id)} style={{padding:"5px 12px",borderRadius:20,border:`1px solid ${ag===g.id?gc:"rgba(255,255,255,.1)"}`,background:ag===g.id?`${gc}18`:"rgba(255,255,255,.03)",color:ag===g.id?gc:"#4a7a96",fontFamily:"inherit",fontWeight:700,fontSize:10,cursor:"pointer",whiteSpace:"nowrap",flexShrink:0}}>{g.name}{g.placesLabel?<span style={{opacity:.75,fontWeight:600}}> · {g.placesLabel}</span>:null} <span style={{opacity:.6,fontSize:9}}>{gp}/{gt}</span></button>;
       })}
     </div>}
 
@@ -285,13 +286,16 @@ function PhaseView({phase, phaseIdx, teamMap, setPoints, tiebreakPoints, onUpdat
 
 // ─── Next Phase Builder ───────────────────────────────────────────────────
 function NextPhaseBuilder({prevPhases, tournamentTeamMap, onBuild, defaultFmt}) {
+  // continue group lettering across phases: A,B,C in phase 1 → D,E in phase 2 → F,G,H …
+  const groupLetterOffset=(prevPhases||[]).filter(p=>p.type==="group").reduce((s,p)=>s+p.groups.length,0);
+  const groupLetter=(i)=>{ const n=groupLetterOffset+i; return n<26?String.fromCharCode(65+n):String.fromCharCode(64+Math.floor(n/26))+String.fromCharCode(65+n%26); };
   const [name,setName]=useState(`Faza ${prevPhases.length+1}`);
   const [fmt,setFmt]=useState(defaultFmt||"bo3");
-  const [newGroups,setNewGroups]=useState([{id:uid(),name:"Grupa A",teamIds:[]}]);
+  const [newGroups,setNewGroups]=useState(()=>[{id:uid(),name:`Grupa ${groupLetter(0)}`,teamIds:[],placesLabel:""}]);
   const [autoStep,setAutoStep]=useState("config"); // config | preview
   const [advPerGroup,setAdvPerGroup]=useState(2);
   const [numNewGroups,setNumNewGroups]=useState(2);
-  const [groupNames,setGroupNames]=useState(["Grupa mistrzowska","Grupa pocieszenia"]);
+  const [groupNames,setGroupNames]=useState(()=>[`Grupa ${groupLetter(0)}`,`Grupa ${groupLetter(1)}`]);
 
   // Gather standings from last group phase only (most relevant)
   const lastGroupPhase=[...prevPhases].reverse().find(p=>p.type==="group");
@@ -323,8 +327,9 @@ function NextPhaseBuilder({prevPhases, tournamentTeamMap, onBuild, defaultFmt}) 
     const srcGroups=lastGroupPhase?lastGroupPhase.groups:[];
     const suggested=Array.from({length:numNewGroups},(_,ni)=>({
       id:uid(),
-      name:groupNames[ni]||`Grupa ${String.fromCharCode(65+ni)}`,
-      teamIds:[]
+      name:groupNames[ni]||`Grupa ${groupLetter(ni)}`,
+      teamIds:[],
+      placesLabel:newGroups[ni]?.placesLabel||""
     }));
     srcGroups.forEach(g=>{
       const rounds=lastGroupPhase.groupData[g.id]?.rounds||[];
@@ -384,7 +389,7 @@ function NextPhaseBuilder({prevPhases, tournamentTeamMap, onBuild, defaultFmt}) 
           <div>
             <div style={{fontSize:9,color:"#4a7a96",letterSpacing:1,marginBottom:6}}>LICZBA NOWYCH GRUP</div>
             <div style={{display:"flex",gap:6}}>
-              {[1,2,3,4].map(n=><button key={n} onClick={()=>{setNumNewGroups(n);setGroupNames(prev=>{const next=[...prev];while(next.length<n)next.push(`Grupa ${String.fromCharCode(65+next.length)}`);return next;});}} style={{flex:1,padding:"8px 2px",borderRadius:8,border:"1px solid",borderColor:numNewGroups===n?"rgba(0,200,255,.5)":"rgba(255,255,255,.08)",background:numNewGroups===n?"rgba(0,200,255,.12)":"transparent",color:numNewGroups===n?"#00c8ff":"#6a8fa8",fontFamily:"inherit",fontWeight:800,fontSize:15,cursor:"pointer"}}>{n}</button>)}
+              {[1,2,3,4].map(n=><button key={n} onClick={()=>{setNumNewGroups(n);setGroupNames(prev=>{const next=[...prev];while(next.length<n)next.push(`Grupa ${groupLetter(next.length)}`);return next;});}} style={{flex:1,padding:"8px 2px",borderRadius:8,border:"1px solid",borderColor:numNewGroups===n?"rgba(0,200,255,.5)":"rgba(255,255,255,.08)",background:numNewGroups===n?"rgba(0,200,255,.12)":"transparent",color:numNewGroups===n?"#00c8ff":"#6a8fa8",fontFamily:"inherit",fontWeight:800,fontSize:15,cursor:"pointer"}}>{n}</button>)}
             </div>
           </div>
         </div>
@@ -421,6 +426,7 @@ function NextPhaseBuilder({prevPhases, tournamentTeamMap, onBuild, defaultFmt}) 
             <span style={{fontSize:9,color:gc}}>{g.teamIds.length} drużyn</span>
             {newGroups.length>1&&<button onClick={()=>setNewGroups(gs=>gs.filter(x=>x.id!==g.id))} style={{width:20,height:20,borderRadius:5,border:"1px solid rgba(255,60,60,.2)",background:"rgba(255,60,60,.07)",color:"#e05",fontSize:12,cursor:"pointer",lineHeight:1}}>×</button>}
           </div>
+          <input value={g.placesLabel||""} onChange={e=>setNewGroups(gs=>gs.map(x=>x.id===g.id?{...x,placesLabel:e.target.value}:x))} placeholder="np. o miejsca 7-9 (opcjonalnie)" style={{width:"100%",marginBottom:8,padding:"6px 9px",borderRadius:8,border:`1px solid ${gc}33`,background:"rgba(255,255,255,.03)",color:"#fff",fontFamily:"inherit",fontSize:11,fontWeight:600,outline:"none"}}/>
           <div style={{display:"flex",flexWrap:"wrap",gap:5}}>
             {allGroupStandings.map(slot=>{
               const inThis=g.teamIds.includes(slot.teamId);
@@ -434,7 +440,7 @@ function NextPhaseBuilder({prevPhases, tournamentTeamMap, onBuild, defaultFmt}) 
           </div>
         </div>;
       })}
-      <button onClick={()=>{const i=newGroups.length;setNewGroups(g=>[...g,{id:uid(),name:`Grupa ${String.fromCharCode(65+i)}`,teamIds:[]}]);}} style={{width:"100%",padding:"8px",borderRadius:10,border:"1px dashed rgba(255,255,255,.12)",background:"transparent",color:"#4a7a96",fontFamily:"inherit",fontWeight:700,fontSize:11,letterSpacing:2,cursor:"pointer",marginBottom:12}}>+ DODAJ GRUPĘ</button>
+      <button onClick={()=>{const i=newGroups.length;setNewGroups(g=>[...g,{id:uid(),name:`Grupa ${groupLetter(i)}`,teamIds:[],placesLabel:""}]);}} style={{width:"100%",padding:"8px",borderRadius:10,border:"1px dashed rgba(255,255,255,.12)",background:"transparent",color:"#4a7a96",fontFamily:"inherit",fontWeight:700,fontSize:11,letterSpacing:2,cursor:"pointer",marginBottom:12}}>+ DODAJ GRUPĘ</button>
     </>}
 
     {autoStep==="preview"&&<>
@@ -450,6 +456,7 @@ function NextPhaseBuilder({prevPhases, tournamentTeamMap, onBuild, defaultFmt}) 
             <input value={g.name} onChange={e=>setNewGroups(gs=>gs.map(x=>x.id===g.id?{...x,name:e.target.value}:x))} style={{flex:1,background:"transparent",border:"none",color:gc,fontFamily:"inherit",fontSize:14,fontWeight:900,outline:"none"}}/>
             <span style={{fontSize:10,color:gc,fontWeight:700}}>{g.teamIds.length} drużyn</span>
           </div>
+          <input value={g.placesLabel||""} onChange={e=>setNewGroups(gs=>gs.map(x=>x.id===g.id?{...x,placesLabel:e.target.value}:x))} placeholder="np. o miejsca 7-9 (opcjonalnie)" style={{width:"100%",marginBottom:10,padding:"7px 10px",borderRadius:8,border:`1px solid ${gc}44`,background:`${gc}0a`,color:"#fff",fontFamily:"inherit",fontSize:12,fontWeight:600,outline:"none"}}/>
           <div style={{display:"flex",flexDirection:"column",gap:5}}>
             {g.teamIds.map(tid=>{
               const t=tournamentTeamMap[tid];
@@ -488,7 +495,7 @@ function NextPhaseBuilder({prevPhases, tournamentTeamMap, onBuild, defaultFmt}) 
       })}
       <div style={{display:"flex",gap:8,marginBottom:12}}>
         <button onClick={()=>setAutoStep("config")} style={{flex:1,padding:"9px",borderRadius:9,border:"1px solid rgba(255,255,255,.1)",background:"transparent",color:"#7a9bb5",fontFamily:"inherit",fontWeight:700,fontSize:11,cursor:"pointer"}}>← ZMIEŃ USTAWIENIA</button>
-        <button onClick={()=>{const i=newGroups.length;setNewGroups(g=>[...g,{id:uid(),name:`Grupa ${String.fromCharCode(65+i)}`,teamIds:[]}]);}} style={{flex:1,padding:"9px",borderRadius:9,border:"1px dashed rgba(255,255,255,.12)",background:"transparent",color:"#4a7a96",fontFamily:"inherit",fontWeight:700,fontSize:11,cursor:"pointer"}}>+ GRUPA</button>
+        <button onClick={()=>{const i=newGroups.length;setNewGroups(g=>[...g,{id:uid(),name:`Grupa ${groupLetter(i)}`,teamIds:[],placesLabel:""}]);}} style={{flex:1,padding:"9px",borderRadius:9,border:"1px dashed rgba(255,255,255,.12)",background:"transparent",color:"#4a7a96",fontFamily:"inherit",fontWeight:700,fontSize:11,cursor:"pointer"}}>+ GRUPA</button>
       </div>
     </>}
 
@@ -660,7 +667,7 @@ function exportPhasePDF(phases, teamMap, tournamentName, tournamentLogo, sponsor
         phaseSections += `
           <div class="section" style="margin-bottom:28px;page-break-inside:avoid;">
             <div style="background:${gc};color:#fff;padding:8px 14px;border-radius:8px 8px 0 0;font-size:13px;font-weight:bold;letter-spacing:1px;">
-              ${phase.name} — ${g.name}
+              ${phase.name} — ${g.name}${g.placesLabel?` · ${g.placesLabel}`:""}
             </div>
             <table style="width:100%;border-collapse:collapse;border:1px solid #ddd;border-top:none;margin-bottom:12px;">
               <thead><tr style="background:#f0f0f0;">
@@ -958,6 +965,31 @@ function Viewer({t}) {
         <span style={{background:"rgba(0,200,255,.08)",border:"1px solid rgba(0,200,255,.18)",borderRadius:20,padding:"3px 10px",fontSize:10,color:"#00c8ff",fontWeight:700}}>● LIVE {played}/{totalM.length}</span>
       </div>
     </div>
+    {t.sponsorLogos?.filter(Boolean).length > 0 && (
+  <div style={{
+    display:"flex",
+    justifyContent:"center",
+    gap:10,
+    flexWrap:"wrap",
+    margin:"10px 0 15px"
+  }}>
+    {t.sponsorLogos.filter(Boolean).map((logo,i)=>(
+      <img
+        key={i}
+        src={logo}
+        alt={`sponsor-${i}`}
+        style={{
+          height:40,
+          maxWidth:120,
+          objectFit:"contain",
+          background:"#fff",
+          padding:4,
+          borderRadius:8
+        }}
+      />
+    ))}
+  </div>
+)}
     <div style={{maxWidth:600,margin:"10px auto 0",padding:"0 12px"}}>
       <div style={{display:"flex",gap:6,overflowX:"auto",paddingBottom:6}}>
         {t.phases.map((p,i)=>{
@@ -971,8 +1003,8 @@ function Viewer({t}) {
       {activePhase===-1
         ?<FinalClassification phases={t.phases} teamMap={teamMap}/>
         :t.phases[activePhase]&&(t.phases[activePhase].type==="group"
-          ?<PhaseView phase={t.phases[activePhase]} phaseIdx={activePhase} teamMap={teamMap} tournamentTeamMap={teamMap} setPoints={t.setPoints} tiebreakPoints={t.tiebreakPoints} readOnly/>
-          :<CrossoverView phase={t.phases[activePhase]} phaseIdx={activePhase} teamMap={teamMap} setPoints={t.setPoints} tiebreakPoints={t.tiebreakPoints} readOnly/>
+          ?<PhaseView key={t.phases[activePhase].id} phase={t.phases[activePhase]} phaseIdx={activePhase} teamMap={teamMap} tournamentTeamMap={teamMap} setPoints={t.setPoints} tiebreakPoints={t.tiebreakPoints} readOnly/>
+          :<CrossoverView key={t.phases[activePhase].id} phase={t.phases[activePhase]} phaseIdx={activePhase} teamMap={teamMap} setPoints={t.setPoints} tiebreakPoints={t.tiebreakPoints} readOnly/>
         )
       }
     </div>
@@ -996,7 +1028,7 @@ export default function App() {
   // setup state
   const [tName,setTName]=useState("Turniej 2025");
   const [tournamentLogo,setTournamentLogo]=useState(null);
-  const [sponsorLogos,setSponsorLogos]=useState([null,null,null]);
+  const [sponsorLogos,setSponsorLogos]=useState([null,null,null,null,null]);
   const [sp,setSp]=useState(25); const [tb,setTb]=useState(15);
   const [cs,setCs]=useState("25"); const [ct,setCt]=useState("15");
   const [defFmt,setDefFmt]=useState("bo3");
@@ -1154,8 +1186,7 @@ export default function App() {
         <div style={{display:"flex",gap:16,flexWrap:"wrap",alignItems:"flex-start"}}>
           <LogoUpload value={tournamentLogo} onChange={setTournamentLogo} label="Logo turnieju" size={80}/>
           <div style={{flex:1}}>
-            <div style={{fontSize:9,color:"#4a7a96",letterSpacing:2,marginBottom:8}}>SPONSORZY (maks. 3)</div>
-            <div style={{display:"flex",gap:12,flexWrap:"wrap"}}>
+<div style={{fontSize:9,color:"#4a7a96",letterSpacing:2,marginBottom:8}}>SPONSORZY (maks. 5)</div>            <div style={{display:"flex",gap:12,flexWrap:"wrap"}}>
               {sponsorLogos.map((logo,i)=><LogoUpload key={i} value={logo} onChange={v=>setSponsorLogos(p=>{const n=[...p];n[i]=v;return n;})} label={`Sponsor ${i+1}`} size={56}/>)}
             </div>
           </div>
@@ -1263,10 +1294,10 @@ export default function App() {
       <div style={{maxWidth:600,margin:"14px auto",padding:"0 12px"}}>
         {/* current phase */}
         {phases[activePhase]&&(phases[activePhase].type==="group"
-          ?<PhaseView phase={phases[activePhase]} phaseIdx={activePhase} teamMap={teamMap} tournamentTeamMap={teamMap}
+          ?<PhaseView key={phases[activePhase].id} phase={phases[activePhase]} phaseIdx={activePhase} teamMap={teamMap} tournamentTeamMap={teamMap}
               setPoints={tournament.setPoints} tiebreakPoints={tournament.tiebreakPoints}
               onUpdateMatch={updateGroupMatch}/>
-          :<CrossoverView phase={phases[activePhase]} phaseIdx={activePhase} teamMap={teamMap}
+          :<CrossoverView key={phases[activePhase].id} phase={phases[activePhase]} phaseIdx={activePhase} teamMap={teamMap}
               setPoints={tournament.setPoints} tiebreakPoints={tournament.tiebreakPoints}
               onUpdateMatch={(pi,updated)=>updateCrossoverMatch(pi,updated)}/>
         )}
