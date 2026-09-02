@@ -388,8 +388,8 @@ function NextPhaseBuilder({prevPhases, tournamentTeamMap, onBuild, defaultFmt}) 
           </div>
           <div>
             <div style={{fontSize:9,color:"#4a7a96",letterSpacing:1,marginBottom:6}}>LICZBA NOWYCH GRUP</div>
-            <div style={{display:"flex",gap:6}}>
-              {[1,2,3,4].map(n=><button key={n} onClick={()=>{setNumNewGroups(n);setGroupNames(prev=>{const next=[...prev];while(next.length<n)next.push(`Grupa ${groupLetter(next.length)}`);return next;});}} style={{flex:1,padding:"8px 2px",borderRadius:8,border:"1px solid",borderColor:numNewGroups===n?"rgba(0,200,255,.5)":"rgba(255,255,255,.08)",background:numNewGroups===n?"rgba(0,200,255,.12)":"transparent",color:numNewGroups===n?"#00c8ff":"#6a8fa8",fontFamily:"inherit",fontWeight:800,fontSize:15,cursor:"pointer"}}>{n}</button>)}
+            <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+              {[1,2,3,4,5,6].map(n=><button key={n} onClick={()=>{setNumNewGroups(n);setGroupNames(prev=>{const next=[...prev];while(next.length<n)next.push(`Grupa ${groupLetter(next.length)}`);return next;});}} style={{flex:1,padding:"8px 2px",borderRadius:8,border:"1px solid",borderColor:numNewGroups===n?"rgba(0,200,255,.5)":"rgba(255,255,255,.08)",background:numNewGroups===n?"rgba(0,200,255,.12)":"transparent",color:numNewGroups===n?"#00c8ff":"#6a8fa8",fontFamily:"inherit",fontWeight:800,fontSize:15,cursor:"pointer"}}>{n}</button>)}
             </div>
           </div>
         </div>
@@ -415,7 +415,7 @@ function NextPhaseBuilder({prevPhases, tournamentTeamMap, onBuild, defaultFmt}) 
           GENERUJ AUTOSUGESTIĘ →
         </button>
       </div>
-      <div style={{textAlign:"center",fontSize:10,color:"#334d66",marginBottom:10}}>— lub przypisz ręcznie poniżej —</div>
+      <div style={{textAlign:"center",fontSize:10,color:"#334d66",marginBottom:10}}>— lub przypisz ręcznie poniżej (dodaj tyle grup, ile potrzebujesz) —</div>
       {/* manual groups */}
       {newGroups.map((g,gi)=>{
         const gc=GC[gi%GC.length];
@@ -438,9 +438,10 @@ function NextPhaseBuilder({prevPhases, tournamentTeamMap, onBuild, defaultFmt}) 
               </button>;
             })}
           </div>
+          {g.teamIds.length<2&&<div style={{fontSize:9,color:"#e05",marginTop:6}}>⚠ Min. 2 drużyny w grupie</div>}
         </div>;
       })}
-      <button onClick={()=>{const i=newGroups.length;setNewGroups(g=>[...g,{id:uid(),name:`Grupa ${groupLetter(i)}`,teamIds:[],placesLabel:""}]);}} style={{width:"100%",padding:"8px",borderRadius:10,border:"1px dashed rgba(255,255,255,.12)",background:"transparent",color:"#4a7a96",fontFamily:"inherit",fontWeight:700,fontSize:11,letterSpacing:2,cursor:"pointer",marginBottom:12}}>+ DODAJ GRUPĘ</button>
+      <button onClick={()=>{const i=newGroups.length;setNewGroups(g=>[...g,{id:uid(),name:`Grupa ${groupLetter(i)}`,teamIds:[],placesLabel:""}]);}} style={{width:"100%",padding:"11px",borderRadius:10,border:"1px solid rgba(0,200,255,.4)",background:"rgba(0,200,255,.1)",color:"#00c8ff",fontFamily:"inherit",fontWeight:800,fontSize:12,letterSpacing:2,cursor:"pointer",marginBottom:12}}>+ DODAJ KOLEJNĄ GRUPĘ</button>
     </>}
 
     {autoStep==="preview"&&<>
@@ -495,7 +496,7 @@ function NextPhaseBuilder({prevPhases, tournamentTeamMap, onBuild, defaultFmt}) 
       })}
       <div style={{display:"flex",gap:8,marginBottom:12}}>
         <button onClick={()=>setAutoStep("config")} style={{flex:1,padding:"9px",borderRadius:9,border:"1px solid rgba(255,255,255,.1)",background:"transparent",color:"#7a9bb5",fontFamily:"inherit",fontWeight:700,fontSize:11,cursor:"pointer"}}>← ZMIEŃ USTAWIENIA</button>
-        <button onClick={()=>{const i=newGroups.length;setNewGroups(g=>[...g,{id:uid(),name:`Grupa ${groupLetter(i)}`,teamIds:[],placesLabel:""}]);}} style={{flex:1,padding:"9px",borderRadius:9,border:"1px dashed rgba(255,255,255,.12)",background:"transparent",color:"#4a7a96",fontFamily:"inherit",fontWeight:700,fontSize:11,cursor:"pointer"}}>+ GRUPA</button>
+        <button onClick={()=>{const i=newGroups.length;setNewGroups(g=>[...g,{id:uid(),name:`Grupa ${groupLetter(i)}`,teamIds:[],placesLabel:""}]);}} style={{flex:1,padding:"9px",borderRadius:9,border:"1px solid rgba(0,200,255,.4)",background:"rgba(0,200,255,.1)",color:"#00c8ff",fontFamily:"inherit",fontWeight:800,fontSize:11,cursor:"pointer"}}>+ DODAJ GRUPĘ</button>
       </div>
     </>}
 
