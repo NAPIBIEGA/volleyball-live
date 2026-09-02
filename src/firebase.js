@@ -1,11 +1,8 @@
-// Import the functions you need from the SDKs you need
+// Firebase configuration and helpers
 import { initializeApp } from "firebase/app";
-import { getFirestore } from "firebase/firestore";
-// TODO: Add SDKs for Firebase products that you want to use
-// https://firebase.google.com/docs/web/setup#available-libraries
+import { getFirestore, doc, setDoc, getDoc, deleteDoc } from "firebase/firestore";
 
 // Your web app's Firebase configuration
-// For Firebase JS SDK v7.20.0 and later, measurementId is optional
 const firebaseConfig = {
   apiKey: "AIzaSyDQDbVPZB55nq4SnOuLDC7-gieFJOckCQA",
   authDomain: "volleyballlive-abfaa.firebaseapp.com",
@@ -19,3 +16,23 @@ const firebaseConfig = {
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
 export const db = getFirestore(app);
+
+// Zapisz turniej (dokument w kolekcji "tournaments", kluczowany po jego id).
+export async function saveTournament(tournament) {
+  if (!tournament?.id) throw new Error("saveTournament: brak tournament.id");
+  await setDoc(doc(db, "tournaments", tournament.id), {
+    ...tournament,
+    updatedAt: Date.now(),
+  });
+}
+
+// Wczytaj pojedynczy turniej po id (zwraca null, gdy nie istnieje).
+export async function loadTournament(id) {
+  const snap = await getDoc(doc(db, "tournaments", id));
+  return snap.exists() ? snap.data() : null;
+}
+
+// Usuń turniej z chmury.
+export async function deleteTournament(id) {
+  await deleteDoc(doc(db, "tournaments", id));
+}
